@@ -20,7 +20,6 @@ known_users = []
 aux = session.query(UsersId).all()
 for i in aux:
     known_users.append(i.usertgid)
-print(known_users)
 userStep = {}
 buttons = []
 
@@ -47,7 +46,6 @@ class MyStates(StatesGroup):
 
 def addstarterwords(cid):
     tabuserid = session.query(UsersId).where(UsersId.usertgid == cid).all()[0].id
-    print(tabuserid)
     for y in range(10):
         session.add(LearnWords(user_id=tabuserid, dict_id=(y+1)))
     session.commit()
@@ -66,7 +64,12 @@ def create_cards(message):
 
     global buttons
     buttons = []
-    words = session.query(LearnWords).join(Dictionary.wordid).join(UsersId.userid).where(UsersId == cid).limit(4).all()
+    #words = session.query(LearnWords).join(Dictionary.wordid).join(UsersId.userid).where(UsersId == cid).limit(4).all()
+    words = (session.query(Dictionary)
+             .join(LearnWords, LearnWords.dict_id == Dictionary.id)
+             .join(UsersId, UsersId.id == LearnWords.user_id)
+             .filter(UsersId.usertgid == cid)
+             .all())
     target_word = words[0].engword   # взято из БД
     translate = words[0].rusword     # взято из БД
     target_word_btn = types.KeyboardButton(target_word)
@@ -106,9 +109,19 @@ def delete_word(message):
 @bot.message_handler(func=lambda message: message.text == Command.ADD_WORD)
 def add_word(message):
     cid = message.chat.id
-    userStep[cid] = 1
-    session.add(Dictionary(rusword=message))  # сохранить в БД
-    session.commit()
+    hint = 'Введите слово в формате:\n english-русский'
+    bot.send_message(message.chat.id, hint)
+    if '-' not in message.text:
+        hint = 'обратите внимание на формат english-русский. Через дефис'
+        bot.send_message(message.chat.id, hint)
+    english, russian = message.text.split('-')
+    if not session.query(Dictionary).filter(Dictionary.engword == english):
+        Dictionary.addword(cid, english, russian)
+        dictionaryenru = Dictionary.selectwordsbyuser(cid)
+        hint = f'Слово 🇬🇧 {english} добавлено в базу.\nВсего {len(dictionaryenru)} слов'
+        bot.send_message(message.chat.id, hint)
+    create_cards(message)
+    userStep[cid] = 0
 
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
